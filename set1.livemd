@@ -1,0 +1,175 @@
+# Cryptopals Set 1
+
+## 1. Convert hex to base64
+
+The string:
+
+```
+49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d
+```
+
+Should produce:
+
+```
+SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t
+```
+
+So go ahead and make that happen. You'll need to use this code for the rest of the exercises.
+
+---
+
+**Cryptopals Rule**
+
+Always operate on raw bytes, never on encoded strings. Only use hex and base64 for pretty-printing.
+
+```elixir
+defmodule Cryptopals.Set1.Challenge1 do
+  @base64_alphabet ~c"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+                   |> Enum.with_index(fn x, i -> {i, x} end)
+                   |> Map.new()
+
+  def hex2base64(hex) do
+    hex
+    |> String.to_integer(16)
+    |> :binary.encode_unsigned()
+    |> hex2base64helper()
+  end
+
+  defp hex2base64helper(<<>>), do: <<>>
+
+  defp hex2base64helper(<<a::6, b::6, c::6, d::6, rst::bitstring>>) do
+    <<@base64_alphabet[a], @base64_alphabet[b], @base64_alphabet[c], @base64_alphabet[d]>> <>
+      hex2base64helper(rst)
+  end
+
+  defp hex2base64helper(<<a::6, b::6, c::4>>) do
+    <<@base64_alphabet[a], @base64_alphabet[b], @base64_alphabet[c], "=">>
+  end
+
+  defp hex2base64helper(<<a::6, b::2>>) do
+    <<@base64_alphabet[a], @base64_alphabet[b], "==">>
+  end
+end
+```
+
+## 2. Fixed XOR
+
+Write a function that takes two equal-length buffers and produces their XOR combination.
+
+If your function works properly, then when you feed it the string:
+
+```
+1c0111001f010100061a024b53535009181c
+```
+
+... after hex decoding, and when XOR'd against:
+
+```
+686974207468652062756c6c277320657965
+```
+
+... should produce:
+
+```
+746865206b696420646f6e277420706c6179
+```
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+defmodule Cryptopals.Set1.Challenge2 do
+  def fixed_xor(a, b) do
+    a =
+      String.to_integer(a, 16)
+      |> :binary.encode_unsigned()
+
+    b =
+      String.to_integer(b, 16)
+      |> :binary.encode_unsigned()
+
+    fixed_xor_helper(a, b)
+    |> :binary.decode_unsigned()
+    |> Integer.to_string(16)
+    |> String.downcase()
+  end
+
+  def fixed_xor_helper(<<>>, <<>>), do: <<>>
+
+  def fixed_xor_helper(<<a::1, a_rst::bitstring>>, <<b::1, b_rst::bitstring>>) do
+    c =
+      case {a, b} do
+        {0, 0} -> 0
+        {0, 1} -> 1
+        {1, 0} -> 1
+        {1, 1} -> 0
+      end
+
+    <<c::1, fixed_xor_helper(a_rst, b_rst)::bitstring>>
+  end
+end
+```
+
+## Single-byte XOR cipher
+
+The hex encoded string:
+
+```
+1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736
+```
+
+... has been XOR'd against a single character. Find the key, decrypt the message.
+
+You can do this by hand. But don't: write code to do it for you.
+
+How? Devise some method for "scoring" a piece of English plaintext. Character frequency is a good metric. Evaluate each output and choose the one with the best score.
+
+```elixir
+defmodule Cryptopals.Set1.Challenge3 do
+  use Bitwise
+
+  def xor(<<>>, byte) do
+    <<>>
+  end
+
+  def xor(<<x::8, rst::binary>>, byte) do
+    <<bxor(x, byte)>> <> xor(rst, byte)
+  end
+end
+
+input =
+  "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
+  |> String.to_integer(16)
+  |> :binary.encode_unsigned()
+
+for key <- 0..255 do
+  IO.inspect(Cryptopals.Set1.Challenge3.xor(input, key))
+end
+
+# TODO finish the scoring
+```
+
+## Testing it all
+
+```elixir
+ExUnit.start(autorun: false)
+
+defmodule Set1Test do
+  import Cryptopals.Set1.{Challenge1, Challenge2}
+  use ExUnit.Case, async: true
+
+  test "hex2base64" do
+    assert hex2base64(
+             "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
+           ) == "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+  end
+
+  test "fixed_xor" do
+    assert fixed_xor(
+             "1c0111001f010100061a024b53535009181c",
+             "686974207468652062756c6c277320657965"
+           ) == "746865206b696420646f6e277420706c6179"
+  end
+end
+
+ExUnit.run()
+```
