@@ -1,4 +1,41 @@
+<!-- livebook:{"persist_outputs":true} -->
+
 # Cryptopals Set 1
+
+## 0. Setup
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.5.2"}
+])
+
+defmodule Cryptopals.Utils do
+  def encode_hex(bytes) do
+    bytes
+    |> :binary.encode_hex()
+    |> String.downcase()
+  end
+
+  def decode_hex(hex) do
+    hex
+    |> :binary.decode_hex()
+  end
+
+  def read_base64_input!(input) do
+    Kino.Input.read(input)
+    |> String.replace("\n", "")
+    |> Base.decode64!()
+  end
+end
+
+import Cryptopals.Utils
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+Cryptopals.Utils
+```
 
 ## 1. Convert hex to base64
 
@@ -28,28 +65,27 @@ defmodule Cryptopals.Set1.Challenge1 do
                    |> Enum.with_index(fn x, i -> {i, x} end)
                    |> Map.new()
 
-  def hex2base64(hex) do
-    hex
-    |> String.to_integer(16)
-    |> :binary.encode_unsigned()
-    |> hex2base64helper()
-  end
+  def encode_base64(<<>>), do: <<>>
 
-  defp hex2base64helper(<<>>), do: <<>>
-
-  defp hex2base64helper(<<a::6, b::6, c::6, d::6, rst::bitstring>>) do
+  def encode_base64(<<a::6, b::6, c::6, d::6, rst::bitstring>>) do
     <<@base64_alphabet[a], @base64_alphabet[b], @base64_alphabet[c], @base64_alphabet[d]>> <>
-      hex2base64helper(rst)
+      encode_base64(rst)
   end
 
-  defp hex2base64helper(<<a::6, b::6, c::4>>) do
+  def encode_base64(<<a::6, b::6, c::4>>) do
     <<@base64_alphabet[a], @base64_alphabet[b], @base64_alphabet[c], "=">>
   end
 
-  defp hex2base64helper(<<a::6, b::2>>) do
+  def encode_base64(<<a::6, b::2>>) do
     <<@base64_alphabet[a], @base64_alphabet[b], "==">>
   end
 end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set1.Challenge1, <<70, 79, 82, 49, 0, 0, 10, ...>>, {:encode_base64, 1}}
 ```
 
 ## 2. Fixed XOR
@@ -78,24 +114,9 @@ If your function works properly, then when you feed it the string:
 
 ```elixir
 defmodule Cryptopals.Set1.Challenge2 do
-  def fixed_xor(a, b) do
-    a =
-      String.to_integer(a, 16)
-      |> :binary.encode_unsigned()
+  def fixed_xor(<<>>, _), do: <<>>
 
-    b =
-      String.to_integer(b, 16)
-      |> :binary.encode_unsigned()
-
-    fixed_xor_helper(a, b)
-    |> :binary.decode_unsigned()
-    |> Integer.to_string(16)
-    |> String.downcase()
-  end
-
-  def fixed_xor_helper(<<>>, <<>>), do: <<>>
-
-  def fixed_xor_helper(<<a::1, a_rst::bitstring>>, <<b::1, b_rst::bitstring>>) do
+  def fixed_xor(<<a::1, a_rst::bitstring>>, <<b::1, b_rst::bitstring>>) do
     c =
       case {a, b} do
         {0, 0} -> 0
@@ -104,12 +125,18 @@ defmodule Cryptopals.Set1.Challenge2 do
         {1, 1} -> 0
       end
 
-    <<c::1, fixed_xor_helper(a_rst, b_rst)::bitstring>>
+    <<c::1, fixed_xor(a_rst, b_rst)::bitstring>>
   end
 end
 ```
 
-## Single-byte XOR cipher
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set1.Challenge2, <<70, 79, 82, 49, 0, 0, 6, ...>>, {:fixed_xor, 2}}
+```
+
+## 3. Single-byte XOR cipher
 
 The hex encoded string:
 
@@ -127,25 +154,511 @@ How? Devise some method for "scoring" a piece of English plaintext. Character fr
 defmodule Cryptopals.Set1.Challenge3 do
   use Bitwise
 
-  def xor(<<>>, byte) do
+  def xor(<<>>, _byte) do
     <<>>
   end
 
   def xor(<<x::8, rst::binary>>, byte) do
     <<bxor(x, byte)>> <> xor(rst, byte)
   end
+
+  # English letter frequences
+  # These and the log10 idea are from http://practicalcryptography.com/cryptanalysis/letter-frequencies-various-languages/english-letter-frequencies/
+  @monograms %{
+    " " => 0.18399868388580254,
+    "a" => 0.06528332604415538,
+    "b" => 0.012531342868095015,
+    "c" => 0.021018439349774747,
+    "d" => 0.03523431934577844,
+    "e" => 0.10261742470196494,
+    "f" => 0.019179805952664334,
+    "g" => 0.016178672025026573,
+    "h" => 0.050890812568726566,
+    "i" => 0.056467348737766584,
+    "j" => 0.0011847320400802188,
+    "k" => 0.006037640287976256,
+    "l" => 0.03310705983030898,
+    "m" => 0.02089774777877722,
+    "n" => 0.056334978507447564,
+    "o" => 0.06194486601507346,
+    "p" => 0.014653281404481763,
+    "q" => 9.593791262805568e-4,
+    "r" => 0.048625794552908115,
+    "s" => 0.051741663225580235,
+    "t" => 0.07413556318261176,
+    "u" => 0.023188985607049396,
+    "v" => 0.008010827191217628,
+    "w" => 0.018155155658972653,
+    "x" => 0.0014651754741116037,
+    "y" => 0.015511271998835988,
+    "z" => 6.457026385315064e-4
+  }
+
+  def score(binary) do
+    for <<c::binary-size(1) <- binary>>, reduce: 0 do
+      acc -> acc + :math.log10(Map.get(@monograms, c, 0.00001))
+    end
+  end
+
+  def decrypt_single_byte_xor(ciphertext) do
+    for key <- 0..255 do
+      plaintext = xor(ciphertext, key)
+      {key, plaintext, score(plaintext)}
+    end
+    |> Enum.max_by(fn {_key, _plaintext, score} -> score end)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set1.Challenge3, <<70, 79, 82, 49, 0, 0, 14, ...>>,
+ {:decrypt_single_byte_xor, 1}}
+```
+
+## 4. Detect single-character XOR
+
+One of the 60-character strings in this [file](https://cryptopals.com/static/challenge-data/4.txt) has been encrypted by single-character XOR.
+
+Find it.
+
+(Your code from #3 should help.)
+
+```elixir
+ciphertexts = Kino.Input.textarea("Ciphertexts")
+```
+
+```elixir
+Kino.Input.read(ciphertexts)
+|> String.split()
+|> Enum.map(&Cryptopals.Set1.Challenge3.decrypt_single_byte_xor/1)
+|> Enum.min_by(fn {_key, _plaintext, score} -> score end)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{92, "odl>:io=hoom:khjnkhen?moo:9d9>omhm99oelhl89:lhl?m=l=9emh9o98", -160.86905248713413}
+```
+
+## 5. Implement repeating-key XOR
+
+Here is the opening stanza of an important work of the English language:
+
+```
+Burning 'em, if you ain't quick and nimble
+I go crazy when I hear a cymbal
+```
+
+Encrypt it, under the key "ICE", using repeating-key XOR.
+
+In repeating-key XOR, you'll sequentially apply each byte of the key; the first byte of plaintext will be XOR'd against I, the next C, the next E, then I again for the 4th byte, and so on.
+
+It should come out to:
+
+```
+0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272
+a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f
+```
+
+Encrypt a bunch of stuff using your repeating-key XOR function. Encrypt your mail. Encrypt your password file. Your .sig file. Get a feel for it. I promise, we aren't wasting your time with this.
+
+```elixir
+defmodule Cryptopals.Set1.Challenge5 do
+  use Bitwise
+
+  import Cryptopals.Set1.Challenge2, only: [fixed_xor: 2]
+
+  def repeating_key_xor(plaintext, key) do
+    repeat = ceil(byte_size(plaintext) / byte_size(key))
+
+    fixed_xor(plaintext, :binary.copy(key, repeat))
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set1.Challenge5, <<70, 79, 82, 49, 0, 0, 6, ...>>, {:repeating_key_xor, 2}}
+```
+
+## 6. Break repeating-key XOR
+
+It is officially on, now.
+This challenge isn't conceptually hard, but it involves actual error-prone coding. The other challenges in this set are there to bring you up to speed. This one is there to qualify you. If you can do this one, you're probably just fine up to Set 6.
+
+---
+
+[There's a file here](https://cryptopals.com/static/challenge-data/6.txt). It's been base64'd after being encrypted with repeating-key XOR.
+
+Decrypt it.
+
+Here's how:
+
+1. Let KEYSIZE be the guessed length of the key; try values from 2 to (say) 40.
+
+2. Write a function to compute the edit distance/Hamming distance between two strings. The Hamming distance is just the number of differing bits. The distance between:
+
+   ```
+    this is a test
+   ```
+
+   and
+
+   ```
+    wokka wokka!!!
+   ```
+
+   is 37. Make sure your code agrees before you proceed.
+
+3. For each KEYSIZE, take the first KEYSIZE worth of bytes, and the second KEYSIZE worth of bytes, and find the edit distance between them. Normalize this result by dividing by KEYSIZE.
+
+4. The KEYSIZE with the smallest normalized edit distance is probably the key. You could proceed perhaps with the smallest 2-3 KEYSIZE values. Or take 4 KEYSIZE blocks instead of 2 and average the distances.
+
+5. Now that you probably know the KEYSIZE: break the ciphertext into blocks of KEYSIZE length.
+
+6. Now transpose the blocks: make a block that is the first byte of every block, and a block that is the second byte of every block, and so on.
+
+7. Solve each block as if it was single-character XOR. You already have code to do this.
+
+8. For each block, the single-byte XOR key that produces the best looking histogram is the repeating-key XOR key byte for that block. Put them together and you have the key.
+
+9. This code is going to turn out to be surprisingly useful later on. Breaking repeating-key XOR ("Vigenere") statistically is obviously an academic exercise, a "Crypto 101" thing. But more people "know how" to break it than can actually break it, and a similar technique breaks something much more important.
+
+---
+
+No, that's not a mistake.
+We get more tech support questions for this challenge than any of the other ones. We promise, there aren't any blatant errors in this text. In particular: the "wokka wokka!!!" edit distance really is 37.
+
+```elixir
+defmodule Cryptopals.Set1.Challenge6 do
+  use Bitwise
+
+  import Cryptopals.Set1.Challenge2, only: [fixed_xor: 2]
+  import Cryptopals.Set1.Challenge3, only: [decrypt_single_byte_xor: 1]
+
+  def hamming_distance(a, b) when is_bitstring(a) and is_bitstring(b) do
+    for <<c::1 <- fixed_xor(a, b)>>, reduce: 0 do
+      acc -> acc + c
+    end
+  end
+
+  def find_keysize(ciphertext) do
+    candidates =
+      for keysize <- 2..40 do
+        <<a::binary-size(keysize), b::binary-size(keysize), c::binary-size(keysize),
+          d::binary-size(keysize), _::binary>> = ciphertext
+
+        avg_distance =
+          (hamming_distance(a, b) + hamming_distance(a, c) + hamming_distance(a, d) +
+             hamming_distance(b, c) + hamming_distance(b, d) + hamming_distance(c, d)) /
+            (6.0 * keysize)
+
+        {keysize, avg_distance}
+      end
+
+    {keysize, _distance} = Enum.min_by(candidates, fn {_keysize, distance} -> distance end)
+
+    keysize
+  end
+
+  def transpose_blocks(ciphertext, keysize) do
+    :binary.bin_to_list(ciphertext)
+    |> Enum.chunk_every(keysize, keysize, :discard)
+    |> Enum.zip()
+    |> Enum.map(fn tuple -> Tuple.to_list(tuple) |> :binary.list_to_bin() end)
+  end
+
+  def find_key(ciphertext, keysize) do
+    transpose_blocks(ciphertext, keysize)
+    |> Enum.map(&decrypt_single_byte_xor/1)
+    |> Enum.map(fn {key, _plaintext, _score} -> key end)
+    |> :binary.list_to_bin()
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set1.Challenge6, <<70, 79, 82, 49, 0, 0, 16, ...>>, {:find_key, 2}}
+```
+
+```elixir
+challenge6_input = Kino.Input.textarea("Challenge 6 Ciphertext")
+```
+
+```elixir
+challenge6_ciphertext = read_base64_input!(challenge6_input)
+
+keysize =
+  Cryptopals.Set1.Challenge6.find_keysize(challenge6_ciphertext)
+  |> IO.inspect(label: "keysize")
+
+key =
+  Cryptopals.Set1.Challenge6.find_key(challenge6_ciphertext, keysize)
+  |> IO.inspect(label: "key")
+
+Cryptopals.Set1.Challenge5.repeating_key_xor(challenge6_ciphertext, key)
+|> IO.puts()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+keysize: 29
+key: "Terminator X: Bring the noise"
+I'm back and I'm ringin' the bell 
+A rockin' on the mike while the fly girls yell 
+In ecstasy in the back of me 
+Well that's my DJ Deshay cuttin' all them Z's 
+Hittin' hard and the girlies goin' crazy 
+Vanilla's on the mike, man I'm not lazy. 
+
+I'm lettin' my drug kick in 
+It controls my mouth and I begin 
+To just let it flow, let my concepts go 
+My posse's to the side yellin', Go Vanilla Go! 
+
+Smooth 'cause that's the way I will be 
+And if you don't give a damn, then 
+Why you starin' at me 
+So get off 'cause I control the stage 
+There's no dissin' allowed 
+I'm in my own phase 
+The girlies sa y they love me and that is ok 
+And I can dance better than any kid n' play 
+
+Stage 2 -- Yea the one ya' wanna listen to 
+It's off my head so let the beat play through 
+So I can funk it up and make it sound good 
+1-2-3 Yo -- Knock on some wood 
+For good luck, I like my rhymes atrocious 
+Supercalafragilisticexpialidocious 
+I'm an effect and that you can bet 
+I can take a fly girl and make her wet. 
+
+I'm like Samson -- Samson to Delilah 
+There's no denyin', You can try to hang 
+But you'll keep tryin' to get my style 
+Over and over, practice makes perfect 
+But not if you're a loafer. 
+
+You'll get nowhere, no place, no time, no girls 
+Soon -- Oh my God, homebody, you probably eat 
+Spaghetti with a spoon! Come on and say it! 
+
+VIP. Vanilla Ice yep, yep, I'm comin' hard like a rhino 
+Intoxicating so you stagger like a wino 
+So punks stop trying and girl stop cryin' 
+Vanilla Ice is sellin' and you people are buyin' 
+'Cause why the freaks are jockin' like Crazy Glue 
+Movin' and groovin' trying to sing along 
+All through the ghetto groovin' this here song 
+Now you're amazed by the VIP posse. 
+
+Steppin' so hard like a German Nazi 
+Startled by the bases hittin' ground 
+There's no trippin' on mine, I'm just gettin' down 
+Sparkamatic, I'm hangin' tight like a fanatic 
+You trapped me once and I thought that 
+You might have it 
+So step down and lend me your ear 
+'89 in my time! You, '90 is my year. 
+
+You're weakenin' fast, YO! and I can tell it 
+Your body's gettin' hot, so, so I can smell it 
+So don't be mad and don't be sad 
+'Cause the lyrics belong to ICE, You can call me Dad 
+You're pitchin' a fit, so step back and endure 
+Let the witch doctor, Ice, do the dance to cure 
+So come up close and don't be square 
+You wanna battle me -- Anytime, anywhere 
+
+You thought that I was weak, Boy, you're dead wrong 
+So come on, everybody and sing this song 
+
+Say -- Play that funky music Say, go white boy, go white boy go 
+play that funky music Go white boy, go white boy, go 
+Lay down and boogie and play that funky music till you die. 
+
+Play that funky music Come on, Come on, let me hear 
+Play that funky music white boy you say it, say it 
+Play that funky music A little louder now 
+Play that funky music, white boy Come on, Come on, Come on 
+Play that funky music 
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## 7. AES in ECB mode
+
+The Base64-encoded content [in this file](https://cryptopals.com/static/challenge-data/7.txt) has been encrypted via AES-128 in ECB mode under the key
+
+```
+"YELLOW SUBMARINE".
+```
+
+(case-sensitive, without the quotes; exactly 16 characters; I like "YELLOW SUBMARINE" because it's exactly 16 bytes long, and now you do too).
+
+Decrypt it. You know the key, after all.
+
+Easiest way: use OpenSSL::Cipher and give it AES-128-ECB as the cipher.
+
+---
+
+Do this with code.
+You can obviously decrypt this using the OpenSSL command-line tool, but we're having you get ECB working in code for a reason. You'll need it a lot later on, and not just for attacking ECB.
+
+```elixir
+challenge7_input = Kino.Input.textarea("Challenge 7 Ciphertext")
+```
+
+```elixir
+challenge7_ciphertext = read_base64_input!(challenge7_input)
+
+:crypto.crypto_one_time(:aes_128_ecb, "YELLOW SUBMARINE", challenge7_ciphertext, encrypt: false)
+|> IO.puts()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+I'm back and I'm ringin' the bell 
+A rockin' on the mike while the fly girls yell 
+In ecstasy in the back of me 
+Well that's my DJ Deshay cuttin' all them Z's 
+Hittin' hard and the girlies goin' crazy 
+Vanilla's on the mike, man I'm not lazy. 
+
+I'm lettin' my drug kick in 
+It controls my mouth and I begin 
+To just let it flow, let my concepts go 
+My posse's to the side yellin', Go Vanilla Go! 
+
+Smooth 'cause that's the way I will be 
+And if you don't give a damn, then 
+Why you starin' at me 
+So get off 'cause I control the stage 
+There's no dissin' allowed 
+I'm in my own phase 
+The girlies sa y they love me and that is ok 
+And I can dance better than any kid n' play 
+
+Stage 2 -- Yea the one ya' wanna listen to 
+It's off my head so let the beat play through 
+So I can funk it up and make it sound good 
+1-2-3 Yo -- Knock on some wood 
+For good luck, I like my rhymes atrocious 
+Supercalafragilisticexpialidocious 
+I'm an effect and that you can bet 
+I can take a fly girl and make her wet. 
+
+I'm like Samson -- Samson to Delilah 
+There's no denyin', You can try to hang 
+But you'll keep tryin' to get my style 
+Over and over, practice makes perfect 
+But not if you're a loafer. 
+
+You'll get nowhere, no place, no time, no girls 
+Soon -- Oh my God, homebody, you probably eat 
+Spaghetti with a spoon! Come on and say it! 
+
+VIP. Vanilla Ice yep, yep, I'm comin' hard like a rhino 
+Intoxicating so you stagger like a wino 
+So punks stop trying and girl stop cryin' 
+Vanilla Ice is sellin' and you people are buyin' 
+'Cause why the freaks are jockin' like Crazy Glue 
+Movin' and groovin' trying to sing along 
+All through the ghetto groovin' this here song 
+Now you're amazed by the VIP posse. 
+
+Steppin' so hard like a German Nazi 
+Startled by the bases hittin' ground 
+There's no trippin' on mine, I'm just gettin' down 
+Sparkamatic, I'm hangin' tight like a fanatic 
+You trapped me once and I thought that 
+You might have it 
+So step down and lend me your ear 
+'89 in my time! You, '90 is my year. 
+
+You're weakenin' fast, YO! and I can tell it 
+Your body's gettin' hot, so, so I can smell it 
+So don't be mad and don't be sad 
+'Cause the lyrics belong to ICE, You can call me Dad 
+You're pitchin' a fit, so step back and endure 
+Let the witch doctor, Ice, do the dance to cure 
+So come up close and don't be square 
+You wanna battle me -- Anytime, anywhere 
+
+You thought that I was weak, Boy, you're dead wrong 
+So come on, everybody and sing this song 
+
+Say -- Play that funky music Say, go white boy, go white boy go 
+play that funky music Go white boy, go white boy, go 
+Lay down and boogie and play that funky music till you die. 
+
+Play that funky music Come on, Come on, let me hear 
+Play that funky music white boy you say it, say it 
+Play that funky music A little louder now 
+Play that funky music, white boy Come on, Come on, Come on 
+Play that funky music 
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## 8. Detect AES in ECB mode
+
+[In this file](https://cryptopals.com/static/challenge-data/8.txt) are a bunch of hex-encoded ciphertexts.
+
+One of them has been encrypted with ECB.
+
+Detect it.
+
+Remember that the problem with ECB is that it is stateless and deterministic; the same 16 byte plaintext block will always produce the same 16 byte ciphertext.
+
+```elixir
+challenge8_input = Kino.Input.textarea("Challenge 8 Ciphertexts")
+```
+
+```elixir
+defmodule Cryptopals.Set1.Challenge8 do
+  def has_duplicate_block?(ciphertext) do
+    keysize = 16
+
+    ciphertext
+    |> :binary.bin_to_list()
+    |> Enum.chunk_every(keysize)
+    |> Enum.frequencies()
+    |> Enum.any?(fn {_block, count} -> count > 1 end)
+  end
 end
 
-input =
-  "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-  |> String.to_integer(16)
-  |> :binary.encode_unsigned()
+challenge8_ciphertexts =
+  Kino.Input.read(challenge8_input)
+  |> String.split("\n")
+  |> Enum.map(&:binary.decode_hex/1)
+  |> Enum.find(&Cryptopals.Set1.Challenge8.has_duplicate_block?/1)
+```
 
-for key <- 0..255 do
-  IO.inspect(Cryptopals.Set1.Challenge3.xor(input, key))
-end
+<!-- livebook:{"output":true} -->
 
-# TODO finish the scoring
+```
+<<216, 128, 97, 151, 64, 168, 161, 155, 120, 64, 168, 163, 28, 129, 10, 61, 8, 100, 154, 247, 13,
+  192, 111, 79, 213, 210, 214, 156, 116, 76, 210, 131, 226, 221, 5, 47, 107, 100, 29, 191, 157, 17,
+  176, 52, 133, 66, 187, 87, 8, 100, ...>>
 ```
 
 ## Testing it all
@@ -154,22 +667,66 @@ end
 ExUnit.start(autorun: false)
 
 defmodule Set1Test do
-  import Cryptopals.Set1.{Challenge1, Challenge2}
+  import Cryptopals.Set1.{Challenge1, Challenge2, Challenge3, Challenge5, Challenge6}
   use ExUnit.Case, async: true
 
-  test "hex2base64" do
-    assert hex2base64(
-             "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
-           ) == "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+  import Cryptopals.Utils
+
+  test "encode_base64" do
+    assert "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
+           |> decode_hex()
+           |> encode_base64() ==
+             "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
   end
 
   test "fixed_xor" do
     assert fixed_xor(
-             "1c0111001f010100061a024b53535009181c",
-             "686974207468652062756c6c277320657965"
-           ) == "746865206b696420646f6e277420706c6179"
+             decode_hex("1c0111001f010100061a024b53535009181c"),
+             decode_hex("686974207468652062756c6c277320657965")
+           ) == decode_hex("746865206b696420646f6e277420706c6179")
+  end
+
+  test "single byte xor" do
+    {_key, plaintext, _score} =
+      decode_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736")
+      |> decrypt_single_byte_xor()
+
+    assert plaintext == "Cooking MC's like a pound of bacon"
+  end
+
+  test "repeating key xor" do
+    plaintext =
+      """
+      Burning 'em, if you ain't quick and nimble
+      I go crazy when I hear a cymbal
+      """
+      |> String.trim()
+
+    assert repeating_key_xor(plaintext, "ICE") |> encode_hex() ==
+             "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
+  end
+
+  test "hamming distance" do
+    assert hamming_distance("this is a test", "wokka wokka!!!") == 37
   end
 end
 
 ExUnit.run()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+.....
+
+Finished in 0.00 seconds (0.00s async, 0.00s sync)
+5 tests, 0 failures
+
+Randomized with seed 146877
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{excluded: 0, failures: 0, skipped: 0, total: 5}
 ```
