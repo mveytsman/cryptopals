@@ -19,8 +19,7 @@
 
             # Decorative prompt override so we know when we're in a dev shell
             shellHook = ''
-              export PS1="\e[1;33m\][dev]\e[1;34m\] \w $ \e[0m\]"
-
+              export PS1="\[\e[1;33m\][dev]\[\e[1;34m\] \w $ \[\e[0m\]"
               mkdir -p .nix-mix
               mkdir -p .nix-hex
               export MIX_HOME=$PWD/.nix-mix
