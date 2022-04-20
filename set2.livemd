@@ -1,0 +1,348 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# Cryptopals Set 2
+
+## Setup
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.5.2"}
+])
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## 9. Implement PKCS#7 padding
+
+A block cipher transforms a fixed-sized block (usually 8 or 16 bytes) of plaintext into ciphertext. But we almost never want to transform a single block; we encrypt irregularly-sized messages.
+
+One way we account for irregularly-sized messages is by padding, creating a plaintext that is an even multiple of the blocksize. The most popular padding scheme is called PKCS#7.
+
+So: pad any block to a specific block length, by appending the number of bytes of padding to the end of the block. For instance,
+
+```
+"YELLOW SUBMARINE"
+```
+
+... padded to 20 bytes would be:
+
+```
+"YELLOW SUBMARINE\x04\x04\x04\x04"
+```
+
+```elixir
+defmodule Cryptopals.Set2.Challenge9 do
+  def pkcs7(block, blocksize) when byte_size(block) <= blocksize do
+    pad = blocksize - byte_size(block)
+    block <> :binary.copy(<<pad>>, pad)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set2.Challenge9, <<70, 79, 82, 49, 0, 0, 6, ...>>, {:pkcs7, 2}}
+```
+
+## 10. Implement CBC mode
+
+CBC mode is a block cipher mode that allows us to encrypt irregularly-sized messages, despite the fact that a block cipher natively only transforms individual blocks.
+
+In CBC mode, each ciphertext block is added to the next plaintext block before the next call to the cipher core.
+
+The first plaintext block, which has no associated previous ciphertext block, is added to a "fake 0th ciphertext block" called the initialization vector, or IV.
+
+Implement CBC mode by hand by taking the ECB function you wrote earlier, making it encrypt instead of decrypt (verify this by decrypting whatever you encrypt to test), and using your XOR function from the previous exercise to combine them.
+
+[The file here](https://cryptopals.com/static/challenge-data/10.txt) is intelligible (somewhat) when CBC decrypted against "YELLOW SUBMARINE" with an IV of all ASCII 0 (\x00\x00\x00 &c)
+
+---
+
+Don't cheat.
+Do not use OpenSSL's CBC code to do CBC mode, even to verify your results. What's the point of even doing this stuff if you aren't going to learn from it?
+
+```elixir
+defmodule Cryptopals.Set2.Challenge10 do
+  import Cryptopals.Set2.Challenge9, only: [pkcs7: 2]
+  use Bitwise
+
+  @blocksize 16
+
+  def xor(a, b) when is_bitstring(a) and is_bitstring(b) do
+    bxor(:binary.decode_unsigned(a), :binary.decode_unsigned(b))
+    |> :binary.encode_unsigned()
+  end
+
+  def aes_cbc_encrypt(<<>>, _key, _prev_block) do
+    <<>>
+  end
+
+  def aes_cbc_encrypt(plaintext_block, key, prev_block)
+      when byte_size(plaintext_block) < @blocksize do
+    aes_cbc_encrypt(pkcs7(plaintext_block, @blocksize), key, prev_block)
+  end
+
+  def aes_cbc_encrypt(
+        <<plaintext_block::binary-size(@blocksize), rst::binary>>,
+        key,
+        prev_block
+      ) do
+    block =
+      plaintext_block
+      |> xor(prev_block)
+
+    ciphertext_block = :crypto.crypto_one_time(:aes_128_ecb, key, block, encrypt: true)
+
+    ciphertext_block <> aes_cbc_encrypt(rst, key, ciphertext_block)
+  end
+
+  def aes_cbc_decrypt(<<>>, _key, _prev_block) do
+    <<>>
+  end
+
+  # TODO: lop off the padding
+  def aes_cbc_decrypt(
+        <<ciphertext_block::binary-size(@blocksize), rst::binary>>,
+        key,
+        prev_block
+      ) do
+    plaintext_block =
+      :crypto.crypto_one_time(:aes_128_ecb, key, ciphertext_block, encrypt: false)
+      |> xor(prev_block)
+
+    plaintext_block <> aes_cbc_decrypt(rst, key, ciphertext_block)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set2.Challenge10, <<70, 79, 82, 49, 0, 0, 11, ...>>, {:aes_cbc_decrypt, 3}}
+```
+
+```elixir
+challenge10_input = Kino.Input.textarea("Challenge 10")
+```
+
+```elixir
+challenge10_ciphertext =
+  Kino.Input.read(challenge10_input)
+  |> String.replace("\n", "")
+  |> Base.decode64!()
+
+key = "YELLOW SUBMARINE"
+iv = :binary.copy("\x00", 16)
+
+Cryptopals.Set2.Challenge10.aes_cbc_decrypt(challenge10_ciphertext, key, iv)
+|> IO.puts()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+I'm back and I'm ringin' the bell 
+A rockin' on the mike while the fly girls yell 
+In ecstasy in the back of me 
+Well that's my DJ Deshay cuttin' all them Z's 
+Hittin' hard and the girlies goin' crazy 
+Vanilla's on the mike, man I'm not lazy. 
+
+I'm lettin' my drug kick in 
+It controls my mouth and I begin 
+To just let it flow, let my concepts go 
+My posse's to the side yellin', Go Vanilla Go! 
+
+Smooth 'cause that's the way I will be 
+And if you don't give a damn, then 
+Why you starin' at me 
+So get off 'cause I control the stage 
+There's no dissin' allowed 
+I'm in my own phase 
+The girlies sa y they love me and that is ok 
+And I can dance better than any kid n' play 
+
+Stage 2 -- Yea the one ya' wanna listen to 
+It's off my head so let the beat play through 
+So I can funk it up and make it sound good 
+1-2-3 Yo -- Knock on some wood 
+For good luck, I like my rhymes atrocious 
+Supercalafragilisticexpialidocious 
+I'm an effect and that you can bet 
+I can take a fly girl and make her wet. 
+
+I'm like Samson -- Samson to Delilah 
+There's no denyin', You can try to hang 
+But you'll keep tryin' to get my style 
+Over and over, practice makes perfect 
+But not if you're a loafer. 
+
+You'll get nowhere, no place, no time, no girls 
+Soon -- Oh my God, homebody, you probably eat 
+Spaghetti with a spoon! Come on and say it! 
+
+VIP. Vanilla Ice yep, yep, I'm comin' hard like a rhino 
+Intoxicating so you stagger like a wino 
+So punks stop trying and girl stop cryin' 
+Vanilla Ice is sellin' and you people are buyin' 
+'Cause why the freaks are jockin' like Crazy Glue 
+Movin' and groovin' trying to sing along 
+All through the ghetto groovin' this here song 
+Now you're amazed by the VIP posse. 
+
+Steppin' so hard like a German Nazi 
+Startled by the bases hittin' ground 
+There's no trippin' on mine, I'm just gettin' down 
+Sparkamatic, I'm hangin' tight like a fanatic 
+You trapped me once and I thought that 
+You might have it 
+So step down and lend me your ear 
+'89 in my time! You, '90 is my year. 
+
+You're weakenin' fast, YO! and I can tell it 
+Your body's gettin' hot, so, so I can smell it 
+So don't be mad and don't be sad 
+'Cause the lyrics belong to ICE, You can call me Dad 
+You're pitchin' a fit, so step back and endure 
+Let the witch doctor, Ice, do the dance to cure 
+So come up close and don't be square 
+You wanna battle me -- Anytime, anywhere 
+
+You thought that I was weak, Boy, you're dead wrong 
+So come on, everybody and sing this song 
+
+Say -- Play that funky music Say, go white boy, go white boy go 
+play that funky music Go white boy, go white boy, go 
+Lay down and boogie and play that funky music till you die. 
+
+Play that funky music Come on, Come on, let me hear 
+Play that funky music white boy you say it, say it 
+Play that funky music A little louder now 
+Play that funky music, white boy Come on, Come on, Come on 
+Play that funky music 
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## 11. An ECB/CBC detection oracle
+
+Now that you have ECB and CBC working:
+
+Write a function to generate a random AES key; that's just 16 random bytes.
+
+Write a function that encrypts data under an unknown key --- that is, a function that generates a random key and encrypts under it.
+
+The function should look like:
+
+```
+encryption_oracle(your-input)
+=> [MEANINGLESS JIBBER JABBER]
+```
+
+Under the hood, have the function append 5-10 bytes (count chosen randomly) before the plaintext and 5-10 bytes after the plaintext.
+
+Now, have the function choose to encrypt under ECB 1/2 the time, and under CBC the other half (just use random IVs each time for CBC). Use rand(2) to decide which to use.
+
+Detect the block cipher mode the function is using each time. You should end up with a piece of code that, pointed at a block box that might be encrypting ECB or CBC, tells you which one is happening.
+
+```elixir
+defmodule Cryptopals.Set2.Challenge11 do
+  import Cryptopals.Set2.Challenge10
+  @blocksize 16
+
+  def encryption_oracle(input) do
+    padded_input = :rand.bytes(Enum.random(5..10)) <> input <> :rand.bytes(Enum.random(5..10))
+
+    case Enum.random([:cbc, :ecb]) do
+      :cbc ->
+        encrypted =
+          aes_cbc_encrypt(padded_input, :rand.bytes(@blocksize), :rand.bytes(@blocksize))
+
+        {:cbc, encrypted}
+
+      :ecb ->
+        encrypted =
+          :crypto.crypto_one_time(:aes_128_ecb, :rand.bytes(@blocksize), padded_input,
+            encrypt: true
+          )
+
+        {:ecb, encrypted}
+    end
+  end
+
+  # We just generate a text with lots of repeating 16-byte blocks and compare to see if two 16-byte sequences (after we drop some padding) are the same
+  # input = :binary.copy("YELLOW SUBMARINE", 20)
+  def detect_mode(output) do
+    <<_::binary-size(20), a::binary-size(16), b::binary-size(16), _::binary>> = output
+
+    if a == b do
+      :ecb
+    else
+      :cbc
+    end
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set2.Challenge11, <<70, 79, 82, 49, 0, 0, 10, ...>>, {:detect_mode, 1}}
+```
+
+## Testing it all
+
+```elixir
+ExUnit.start(autorun: false)
+
+defmodule Set1Test do
+  import Cryptopals.Set2.{Challenge9, Challenge11}
+  use ExUnit.Case, async: true
+
+  test "pkcs7 padding" do
+    assert Cryptopals.Set2.Challenge9.pkcs7("YELLOW SUBMARINE", 20) ==
+             "YELLOW SUBMARINE\x04\x04\x04\x04"
+  end
+
+  test "ecb/cbc mode oracle" do
+    input = :binary.copy("YELLOW SUBMARINE", 20)
+
+    for _ <- 1..100 do
+      {mode, output} = encryption_oracle(input)
+      assert detect_mode(output) == mode
+    end
+  end
+end
+
+ExUnit.run()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+warning: unused import Cryptopals.Set2.Challenge9
+  set2.livemd#cell:4
+
+..
+
+Finished in 0.00 seconds (0.00s async, 0.00s sync)
+2 tests, 0 failures
+
+Randomized with seed 206120
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{excluded: 0, failures: 0, skipped: 0, total: 2}
+```
