@@ -1,0 +1,318 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# Cryptopals Set 3
+
+## Setup
+
+```elixir
+# We need a binary xor again
+defmodule Cryptopals.Utils do
+  use Bitwise
+
+  def xor(<<>>, _), do: <<>>
+
+  def xor(<<x::8, a::binary>>, <<y::8, b::binary>>) do
+    <<bxor(x, y)>> <> xor(a, b)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Utils, <<70, 79, 82, 49, 0, 0, 6, ...>>, {:xor, 2}}
+```
+
+## 17. The CBC padding oracle
+
+This is the best-known attack on modern block-cipher cryptography.
+
+Combine your padding code and your CBC code to write two functions.
+
+The first function should select at random one of the following 10 strings:
+
+```
+MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=
+MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=
+MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==
+MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==
+MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl
+MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==
+MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==
+MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=
+MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=
+MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93
+```
+
+... generate a random AES key (which it should save for all future encryptions), pad the string out to the 16-byte AES block size and CBC-encrypt it under that key, providing the caller the ciphertext and IV.
+
+The second function should consume the ciphertext produced by the first function, decrypt it, check its padding, and return true or false depending on whether the padding is valid.
+
+---
+
+What you're doing here.
+This pair of functions approximates AES-CBC encryption as its deployed serverside in web applications; the second function models the server's consumption of an encrypted session token, as if it was a cookie.
+
+---
+
+It turns out that it's possible to decrypt the ciphertexts provided by the first function.
+
+The decryption here depends on a side-channel leak by the decryption function. The leak is the error message that the padding is valid or not.
+
+You can find 100 web pages on how this attack works, so I won't re-explain it. What I'll say is this:
+
+The fundamental insight behind this attack is that the byte 01h is valid padding, and occur in 1/256 trials of "randomized" plaintexts produced by decrypting a tampered ciphertext.
+
+02h in isolation is not valid padding.
+
+02h 02h is valid padding, but is much less likely to occur randomly than 01h.
+
+03h 03h 03h is even less likely.
+
+So you can assume that if you corrupt a decryption AND it had valid padding, you know what that padding byte is.
+
+It is easy to get tripped up on the fact that CBC plaintexts are "padded". Padding oracles have nothing to do with the actual padding on a CBC plaintext. It's an attack that targets a specific bit of code that handles decryption. You can mount a padding oracle on any CBC block, whether it's padded or not.
+
+```elixir
+defmodule Cryptopals.Set3.Challenge17 do
+  # We'll just use the erlang aes libraries directly for encryption / padding,
+  # this makes things more realistic
+
+  @blocksize 16
+
+  @plaintexts """
+              MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=
+              MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=
+              MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==
+              MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==
+              MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl
+              MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==
+              MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==
+              MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=
+              MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=
+              MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93
+              """
+              |> String.split("\n")
+              |> Enum.map(&Base.decode64!/1)
+
+  @random_key :rand.bytes(@blocksize)
+
+  def random_ciphertext do
+    iv = :rand.bytes(@blocksize)
+
+    ciphertext =
+      :crypto.crypto_one_time(:aes_128_cbc, @random_key, iv, Enum.random(@plaintexts),
+        encrypt: true,
+        padding: :pkcs_padding
+      )
+
+    {ciphertext, iv}
+  end
+
+  def padding_oracle(ciphertext, iv) do
+    try do
+      :crypto.crypto_one_time(:aes_128_cbc, @random_key, iv, ciphertext,
+        encrypt: false,
+        padding: :pkcs_padding
+      )
+
+      true
+    rescue
+      ErlangError -> false
+    end
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set3.Challenge17, <<70, 79, 82, 49, 0, 0, 11, ...>>, {:padding_oracle, 2}}
+```
+
+```elixir
+defmodule Cryptopals.Set3.Challenge17Solutions do
+  import Cryptopals.Set3.Challenge17, only: [padding_oracle: 2]
+
+  import Cryptopals.Utils
+
+  @blocksize 16
+
+  def decrypt(<<>>, _iv), do: <<>>
+
+  def decrypt(<<block::binary-size(@blocksize), rst::binary>>, iv) do
+    decrypt_block(block, iv) <> decrypt(rst, block)
+  end
+
+  def decrypt_block(ciphertext_block, iv) do
+    # Iterate backwards through the block
+    Enum.reduce((@blocksize - 1)..0, "", fn pos, decrypted ->
+      # Set up padding byte
+      padding_byte = @blocksize - pos
+
+      padding =
+        decrypted
+        |> xor(:binary.copy(<<padding_byte>>, byte_size(decrypted)))
+
+      # Find the byte that matches the padding
+      byte =
+        Enum.reduce_while(0..255, nil, fn byte, _acc ->
+          if padding_oracle(ciphertext_block, :binary.copy("A", pos) <> <<byte>> <> padding) do
+            {:halt, byte}
+          else
+            {:cont, nil}
+          end
+        end)
+
+      # decrypted is that byte xored with the padding
+      xor(<<byte>>, <<padding_byte>>) <> decrypted
+    end)
+    |> xor(iv)
+  end
+end
+
+{c, iv} = Cryptopals.Set3.Challenge17.random_ciphertext()
+
+ciphertext_block = :binary.part(c, 0, 16)
+
+Cryptopals.Set3.Challenge17Solutions.decrypt(c, iv)
+|> IO.puts()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+000008ollin' in my five point oh
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## 18. Implement CTR, the stream cipher mode
+
+The string:
+
+```
+L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==
+```
+
+... decrypts to something approximating English in CTR mode, which is an AES block cipher mode that turns AES into a stream cipher, with the following parameters:
+
+```
+  key=YELLOW SUBMARINE
+  nonce=0
+  format=64 bit unsigned little endian nonce,
+         64 bit little endian block count (byte count / 16)
+```
+
+CTR mode is very simple.
+
+Instead of encrypting the plaintext, CTR mode encrypts a running counter, producing a 16 byte block of keystream, which is XOR'd against the plaintext.
+
+For instance, for the first 16 bytes of a message with these parameters:
+
+```
+keystream = AES("YELLOW SUBMARINE",
+                "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+```
+
+... for the next 16 bytes:
+
+```
+keystream = AES("YELLOW SUBMARINE",
+                "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00")
+```
+
+... and then:
+
+```
+keystream = AES("YELLOW SUBMARINE",
+                "\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00")
+```
+
+CTR mode does not require padding; when you run out of plaintext, you just stop XOR'ing keystream and stop generating keystream.
+
+Decryption is identical to encryption. Generate the same keystream, XOR, and recover the plaintext.
+
+Decrypt the string at the top of this function, then use your CTR function to encrypt and decrypt other things.
+
+---
+
+This is the only block cipher mode that matters in good code.
+Most modern cryptography relies on CTR mode to adapt block ciphers into stream ciphers, because most of what we want to encrypt is better described as a stream than as a sequence of blocks. Daniel Bernstein once quipped to Phil Rogaway that good cryptosystems don't need the "decrypt" transforms. Constructions like CTR are what he was talking about.
+
+```elixir
+defmodule Cryptopals.Set3.Challenge18 do
+  import Cryptopals.Utils, only: [xor: 2]
+
+  @blocksize 16
+  @nonce <<0::64-little>>
+
+  def keystream(key, counter) do
+    :crypto.crypto_one_time(:aes_128_ecb, key, <<@nonce, counter::64-little>>, encrypt: true)
+  end
+
+  def aes_ctr(key, plaintext) do
+    aes_ctr(key, plaintext, 0)
+  end
+
+  def aes_ctr(key, plaintext, ctr) when byte_size(plaintext) <= @blocksize do
+    xor(plaintext, keystream(key, ctr))
+  ende
+
+  def aes_ctr(key, <<block::binary-size(@blocksize), rst::binary>>, ctr) do
+    xor(block, keystream(key, ctr)) <> aes_ctr(key, rst, ctr + 1)
+  end
+end
+
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set3.Challenge18, <<70, 79, 82, 49, 0, 0, 9, ...>>, {:aes_ctr, 3}}
+```
+
+## Testing it all
+
+```elixir
+ExUnit.start(autorun: false)
+
+defmodule Set3Test do
+  import Cryptopals.Set3.{Challenge18}
+  use ExUnit.Case, async: true
+
+  test "aes ctr mode" do
+    ciphertext =
+      Base.decode64!("L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==")
+
+    assert aes_ctr("YELLOW SUBMARINE", ciphertext) ==
+             "Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby "
+  end
+end
+
+ExUnit.run()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+.
+
+Finished in 0.00 seconds (0.00s async, 0.00s sync)
+1 test, 0 failures
+
+Randomized with seed 210901
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{excluded: 0, failures: 0, skipped: 0, total: 1}
+```
+
+## Section
