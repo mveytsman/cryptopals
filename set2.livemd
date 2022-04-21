@@ -890,15 +890,52 @@ defmodule Cryptopals.Set2.Challenge16 do
     |> Enum.member?({"admin", "true"})
   end
 end
-
-Cryptopals.Set2.Challenge16.encrypt("A")
-|> Cryptopals.Set2.Challenge16.decrypt()
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-"comment1=cooking%20MCs;userdata=A;comment2=%20like%20a%20pound%20of%20bacon"
+{:module, Cryptopals.Set2.Challenge16, <<70, 79, 82, 49, 0, 0, 10, ...>>, {:check_admin, 1}}
+```
+
+```elixir
+# We need a binary xor again
+defmodule Cryptopals.Utils do
+  use Bitwise
+
+  def xor(<<>>, _), do: <<>>
+
+  def xor(<<x::8, a::binary>>, <<y::8, b::binary>>) do
+    <<bxor(x, y)>> <> xor(a, b)
+  end
+end
+
+# First we need to get a block to scramble
+# Use 32 A's as input so we get two blocks of A's 
+userdata = :binary.copy("A", 32)
+
+# The prefix aligns nicely along blocks, so we get our first encrypted block of As 
+<<prefix::binary-size(32), block::binary-size(16), rst::binary>> =
+  Cryptopals.Set2.Challenge16.encrypt(userdata)
+
+# We want to bitflip our ciphertext so the next block is turned into the target
+target =
+  "AAAAA;admin=true"
+  |> Cryptopals.Utils.xor(:binary.copy("A", 16))
+
+scrambled_block = Cryptopals.Utils.xor(block, target)
+
+# Now we sub in our scrambled block to get the result we want
+new_ciphertext = prefix <> scrambled_block <> rst
+
+# We're admin
+Cryptopals.Set2.Challenge16.check_admin(new_ciphertext)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+true
 ```
 
 ## Testing it all
