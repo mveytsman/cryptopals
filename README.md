@@ -1,8 +1,5 @@
 # Cryptopals (in LiveBook!)
 
-[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fmveytsman%2Fcryptopals%2Fblob%2Fmain%2Findex.livemd)
-
-
 ## Introduction
 
 Ah... [cryptopals](https://cryptopals.com/)! See this [comment](https://news.ycombinator.com/item?id=23392365) by tptacek for a rundown of their history. Hard to believe these have been kicking around for 10+ years and I'm only now taking a serious crack at them.
@@ -22,6 +19,12 @@ Hopefully, I'll learn some crypto engineering along the way.
 
 ## Table of Contents
 
-* [Set 1: Basics](./set1.livemd)
+* [Set 1: Basics](./set1.livemd) 
+    
+    [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fmveytsman%2Fcryptopals%2Fblob%2Fmain%2Fset1.livemd)
 * [Set 2: Block crypto](./set2.livemd)
+
+    [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fmveytsman%2Fcryptopals%2Fblob%2Fmain%2Fset2.livemd)
 * [Set 3: Block & stream crypto](./set3.livemd)
+
+     [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fmveytsman%2Fcryptopals%2Fblob%2Fmain%2Fset3.livemd)
