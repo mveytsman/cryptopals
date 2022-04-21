@@ -36,9 +36,9 @@ So: pad any block to a specific block length, by appending the number of bytes o
 
 ```elixir
 defmodule Cryptopals.Set2.Challenge9 do
-  def pkcs7(block, blocksize) when byte_size(block) <= blocksize do
-    pad = blocksize - byte_size(block)
-    block <> :binary.copy(<<pad>>, pad)
+  def pkcs7(plaintext, blocksize) do
+    padding = blocksize - rem(byte_size(plaintext), blocksize)
+    plaintext <> :binary.copy(<<padding>>, padding)
   end
 end
 ```
@@ -78,16 +78,15 @@ defmodule Cryptopals.Set2.Challenge10 do
     |> :binary.encode_unsigned()
   end
 
-  def aes_cbc_encrypt(<<>>, _key, _prev_block) do
+  def aes_cbc_encrypt(plaintext, key, iv) do
+    aes_cbc_encrypt_helper(pkcs7(plaintext, @blocksize), key, iv)
+  end
+
+  def aes_cbc_encrypt_helper(<<>>, _key, _prev_block) do
     <<>>
   end
 
-  def aes_cbc_encrypt(plaintext_block, key, prev_block)
-      when byte_size(plaintext_block) < @blocksize do
-    aes_cbc_encrypt(pkcs7(plaintext_block, @blocksize), key, prev_block)
-  end
-
-  def aes_cbc_encrypt(
+  def aes_cbc_encrypt_helper(
         <<plaintext_block::binary-size(@blocksize), rst::binary>>,
         key,
         prev_block
@@ -98,14 +97,26 @@ defmodule Cryptopals.Set2.Challenge10 do
 
     ciphertext_block = :crypto.crypto_one_time(:aes_128_ecb, key, block, encrypt: true)
 
-    ciphertext_block <> aes_cbc_encrypt(rst, key, ciphertext_block)
+    ciphertext_block <> aes_cbc_encrypt_helper(rst, key, ciphertext_block)
   end
 
   def aes_cbc_decrypt(<<>>, _key, _prev_block) do
     <<>>
   end
 
-  # TODO: lop off the padding
+  # Note we're using strip_padding from a future challenge
+  import Cryptopals.Set2.Challenge15, only: [strip_padding: 1]
+
+  def aes_cbc_decrypt(
+        <<ciphertext_block::binary-size(@blocksize)>>,
+        key,
+        prev_block
+      ) do
+    :crypto.crypto_one_time(:aes_128_ecb, key, ciphertext_block, encrypt: false)
+    |> xor(prev_block)
+    |> strip_padding()
+  end
+
   def aes_cbc_decrypt(
         <<ciphertext_block::binary-size(@blocksize), rst::binary>>,
         key,
@@ -123,7 +134,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Cryptopals.Set2.Challenge10, <<70, 79, 82, 49, 0, 0, 11, ...>>, {:aes_cbc_decrypt, 3}}
+{:module, Cryptopals.Set2.Challenge10, <<70, 79, 82, 49, 0, 0, 12, ...>>, {:aes_cbc_decrypt, 3}}
 ```
 
 ```elixir
@@ -146,6 +157,85 @@ Cryptopals.Set2.Challenge10.aes_cbc_decrypt(challenge10_ciphertext, key, iv)
 <!-- livebook:{"output":true} -->
 
 ```
+I'm back and I'm ringin' the bell 
+A rockin' on the mike while the fly girls yell 
+In ecstasy in the back of me 
+Well that's my DJ Deshay cuttin' all them Z's 
+Hittin' hard and the girlies goin' crazy 
+Vanilla's on the mike, man I'm not lazy. 
+
+I'm lettin' my drug kick in 
+It controls my mouth and I begin 
+To just let it flow, let my concepts go 
+My posse's to the side yellin', Go Vanilla Go! 
+
+Smooth 'cause that's the way I will be 
+And if you don't give a damn, then 
+Why you starin' at me 
+So get off 'cause I control the stage 
+There's no dissin' allowed 
+I'm in my own phase 
+The girlies sa y they love me and that is ok 
+And I can dance better than any kid n' play 
+
+Stage 2 -- Yea the one ya' wanna listen to 
+It's off my head so let the beat play through 
+So I can funk it up and make it sound good 
+1-2-3 Yo -- Knock on some wood 
+For good luck, I like my rhymes atrocious 
+Supercalafragilisticexpialidocious 
+I'm an effect and that you can bet 
+I can take a fly girl and make her wet. 
+
+I'm like Samson -- Samson to Delilah 
+There's no denyin', You can try to hang 
+But you'll keep tryin' to get my style 
+Over and over, practice makes perfect 
+But not if you're a loafer. 
+
+You'll get nowhere, no place, no time, no girls 
+Soon -- Oh my God, homebody, you probably eat 
+Spaghetti with a spoon! Come on and say it! 
+
+VIP. Vanilla Ice yep, yep, I'm comin' hard like a rhino 
+Intoxicating so you stagger like a wino 
+So punks stop trying and girl stop cryin' 
+Vanilla Ice is sellin' and you people are buyin' 
+'Cause why the freaks are jockin' like Crazy Glue 
+Movin' and groovin' trying to sing along 
+All through the ghetto groovin' this here song 
+Now you're amazed by the VIP posse. 
+
+Steppin' so hard like a German Nazi 
+Startled by the bases hittin' ground 
+There's no trippin' on mine, I'm just gettin' down 
+Sparkamatic, I'm hangin' tight like a fanatic 
+You trapped me once and I thought that 
+You might have it 
+So step down and lend me your ear 
+'89 in my time! You, '90 is my year. 
+
+You're weakenin' fast, YO! and I can tell it 
+Your body's gettin' hot, so, so I can smell it 
+So don't be mad and don't be sad 
+'Cause the lyrics belong to ICE, You can call me Dad 
+You're pitchin' a fit, so step back and endure 
+Let the witch doctor, Ice, do the dance to cure 
+So come up close and don't be square 
+You wanna battle me -- Anytime, anywhere 
+
+You thought that I was weak, Boy, you're dead wrong 
+So come on, everybody and sing this song 
+
+Say -- Play that funky music Say, go white boy, go white boy go 
+play that funky music Go white boy, go white boy, go 
+Lay down and boogie and play that funky music till you die. 
+
+Play that funky music Come on, Come on, let me hear 
+Play that funky music white boy you say it, say it 
+Play that funky music A little louder now 
+Play that funky music, white boy Come on, Come on, Come on 
+Play that funky music 
 
 ```
 
@@ -318,9 +408,9 @@ byte_size(Cryptopals.Set2.Challenge12.oracle("AAAAAA")) -
 <!-- livebook:{"output":true} -->
 
 ```
-<<232, 129, 140, 224, 72, 13, 163, 245, 180, 204, 10, 78, 120, 87, 150, 149, 232, 129, 140, 224, 72,
-  13, 163, 245, 180, 204, 10, 78, 120, 87, 150, 149, 39, 206, 42, 41, 24, 40, 196, 183, 9, 65, 35,
-  111, 10, 88, 184, 121, 93, 28, ...>>
+<<123, 54, 65, 89, 78, 108, 121, 165, 146, 141, 39, 105, 139, 42, 72, 98, 123, 54, 65, 89, 78, 108,
+  121, 165, 146, 141, 39, 105, 139, 42, 72, 98, 119, 85, 159, 29, 147, 23, 72, 118, 244, 122, 223,
+  142, 62, 71, 163, 39, 238, 39, ...>>
 ```
 
 ```elixir
@@ -635,6 +725,22 @@ Cryptopals.Set2.Challenge14Solution.decrypt()
 |> IO.puts()
 ```
 
+<!-- livebook:{"output":true} -->
+
+```
+Rollin' in my 5.0
+With my rag-top down so my hair can blow
+The girlies on standby waving just to say hi
+Did you stop? No, I just drove by
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
 ## 15. PKCS#7 padding validation
 
 Write a function that takes a plaintext, determines if it has valid PKCS#7 padding, and strips the padding off.
@@ -697,8 +803,6 @@ defmodule Cryptopals.Set2.Challenge15 do
     <<block, strip_padding(plaintext)>>
   end
 end
-
-Cryptopals.Set2.Challenge15.strip_padding("ICE ICE BABY\x04\x04\x04\x05")
 ```
 
 <!-- livebook:{"output":true} -->
@@ -709,9 +813,92 @@ warning: variable "rst" is unused (if the variable is not meant to be used, pref
 
 ```
 
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Cryptopals.Set2.Challenge15, <<70, 79, 82, 49, 0, 0, 12, ...>>, {:strip_padding, 1}}
+```
+
+## 16. CBC bitflipping attacks
+
+Generate a random AES key.
+
+Combine your padding code and CBC code to write two functions.
+
+The first function should take an arbitrary input string, prepend the string:
+
+```
+"comment1=cooking%20MCs;userdata="
+```
+
+.. and append the string:
+
+```
+";comment2=%20like%20a%20pound%20of%20bacon"
+```
+
+The function should quote out the ";" and "=" characters.
+
+The function should then pad out the input to the 16-byte AES block length and encrypt it under the random AES key.
+
+The second function should decrypt the string and look for the characters ";admin=true;" (or, equivalently, decrypt, split the string on ";", convert each resulting string into 2-tuples, and look for the "admin" tuple).
+
+Return true or false based on whether the string exists.
+
+If you've written the first function properly, it should not be possible to provide user input to it that will generate the string the second function is looking for. We'll have to break the crypto to do that.
+
+Instead, modify the ciphertext (without knowledge of the AES key) to accomplish this.
+
+You're relying on the fact that in CBC mode, a 1-bit error in a ciphertext block:
+
+Completely scrambles the block the error occurs in
+Produces the identical 1-bit error(/edit) in the next ciphertext block.
+Stop and think for a second.
+Before you implement this attack, answer this question: why does CBC mode have this property?
+
 ```elixir
-padding = :binary.copy(<<1>>, 1)
-<<value::binary-size(15), ^padding>> = "ICE ICE BABY\x04\x04\x04\x04"
+defmodule Cryptopals.Set2.Challenge16 do
+  import Cryptopals.Set2.Challenge10
+  @blocksize 16
+  @random_key :rand.bytes(@blocksize)
+  @random_iv :rand.bytes(@blocksize)
+
+  @prefix "comment1=cooking%20MCs;userdata="
+  @postfix ";comment2=%20like%20a%20pound%20of%20bacon"
+
+  def encrypt(input) do
+    sanitized =
+      input
+      |> String.replace("=", "%3D")
+      |> String.replace(";", "%3B")
+
+    plaintext = @prefix <> sanitized <> @postfix
+    aes_cbc_encrypt(plaintext, @random_key, @random_iv)
+
+    #    :crypto.crypto_one_time(:aes_128_cbc, @random_key, plaintext, encrypt: true, padding: :pkcs_padding)
+  end
+
+  def decrypt(ciphertext) do
+    aes_cbc_decrypt(ciphertext, @random_key, @random_iv)
+  end
+
+  def check_admin(ciphertext) do
+    ciphertext
+    |> decrypt()
+    |> String.split(";")
+    |> Enum.map(&List.to_tuple(String.split(&1, "=")))
+    |> Enum.member?({"admin", "true"})
+  end
+end
+
+Cryptopals.Set2.Challenge16.encrypt("A")
+|> Cryptopals.Set2.Challenge16.decrypt()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+"comment1=cooking%20MCs;userdata=A;comment2=%20like%20a%20pound%20of%20bacon"
 ```
 
 ## Testing it all
@@ -726,6 +913,12 @@ defmodule Set1Test do
   test "pkcs7 padding" do
     assert pkcs7("YELLOW SUBMARINE", 20) ==
              "YELLOW SUBMARINE\x04\x04\x04\x04"
+
+    assert pkcs7("YELLOW SUBMARIN", 16) ==
+             "YELLOW SUBMARIN\x01"
+
+    assert pkcs7("YELLOW SUBMARINE", 16) ==
+             "YELLOW SUBMARINE\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"
   end
 
   test "ecb/cbc mode oracle" do
@@ -768,7 +961,7 @@ ExUnit.run()
 Finished in 0.00 seconds (0.00s async, 0.00s sync)
 4 tests, 0 failures
 
-Randomized with seed 786891
+Randomized with seed 849580
 ```
 
 <!-- livebook:{"output":true} -->
