@@ -928,7 +928,7 @@ scrambled_block = Cryptopals.Utils.xor(block, target)
 # Now we sub in our scrambled block to get the result we want
 new_ciphertext = prefix <> scrambled_block <> rst
 
-# We're admin
+# We're admin!
 Cryptopals.Set2.Challenge16.check_admin(new_ciphertext)
 ```
 
@@ -943,7 +943,7 @@ true
 ```elixir
 ExUnit.start(autorun: false)
 
-defmodule Set1Test do
+defmodule Set2Test do
   import Cryptopals.Set2.{Challenge9, Challenge11, Challenge13, Challenge15}
   use ExUnit.Case, async: true
 
